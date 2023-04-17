@@ -3,15 +3,18 @@
   hosts: webservers
   become: true
   tasks:
-    - ansible.builtin.apt:
+    - name: "Install nginx"
+      ansible.builtin.apt:
         name: nginx
         state: latest
       become: true
-    - ansible.builtin.lineinfile:
+    - name: "Add custom header"
+      ansible.builtin.lineinfile:
         path: /etc/nginx/sites-available/default
         insertafter: ^\s+listen\s\[::\]:80\sdefault_server;
         line: "       add_header X-Webserver {{ ansible_hostname }};" 
-    - ansible.builtin.systemd:
+    - name: "Restart nginx daemon"
+      ansible.builtin.systemd:
         name: nginx
         state: restarted
         enabled: true
@@ -20,8 +23,35 @@
   hosts: ha-proxies
   become: true
   tasks:
-    - ansible.builtin.apt:
+    - name: "Install HAPROXY"
+      ansible.builtin.apt:
         name: haproxy
         state: latest
       become: true
-        
+
+    - name: "Get facts webservers group"
+      ansible.builtin.setup:
+      delegate_to: "{{ item }}"
+      delegate_facts: true
+      loop: "{{groups['webservers']}}"
+      register: webservers_facts
+    
+    - name: "Add HAPROXY configuration"
+      ansible.builtin.blockinfile:
+        path: /etc/haproxy/haproxy.cfg
+        block: |
+          frontend LAB_FRONTEND
+            bind *:80
+            default_backend LAB_BACKEND
+
+          backend LAB_BACKEND
+            {% for server in webservers_facts.results %}
+              server {{server['ansible_facts']['ansible_hostname']}} {{server['ansible_facts']['ansible_eth1']['ipv4']['address']}}:80
+            {% endfor %}
+
+    - name: "Restart HAPROXY"
+      ansible.builtin.systemd:
+        name: haproxy
+        state: restarted
+        enabled: true
+            
