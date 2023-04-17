@@ -1,0 +1,27 @@
+---
+- name: "Install webservers"
+  hosts: webservers
+  become: true
+  tasks:
+    - ansible.builtin.apt:
+        name: nginx
+        state: latest
+      become: true
+    - ansible.builtin.lineinfile:
+        path: /etc/nginx/sites-available/default
+        insertafter: ^\s+listen\s\[::\]:80\sdefault_server;
+        line: "       add_header X-Webserver {{ ansible_hostname }};" 
+    - ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+        enabled: true
+
+- name: "Install HA"
+  hosts: ha-proxies
+  become: true
+  tasks:
+    - ansible.builtin.apt:
+        name: haproxy
+        state: latest
+      become: true
+        
