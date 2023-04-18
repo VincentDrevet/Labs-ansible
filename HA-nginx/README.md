@@ -21,6 +21,16 @@ Ex Instantiate 2 VMs thereas 3:
   end
 ```
 
+You have to add DNS entry for testing ACL.
+
+Ex :
+
+edit /etc/hosts
+```
+xxx.xxx.xxx website1.local
+xxx.xxx.xxx website1.local
+xxx.xxx.xxx website1.local
+```
 
 # How to launch ?
 

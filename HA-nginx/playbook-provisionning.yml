@@ -42,12 +42,17 @@
         block: |
           frontend LAB_FRONTEND
             bind *:80
-            default_backend LAB_BACKEND
+            mode http
 
-          backend LAB_BACKEND
-            {% for server in webservers_facts.results %}
-              server {{server['ansible_facts']['ansible_hostname']}} {{server['ansible_facts']['ansible_eth1']['ipv4']['address']}}:80
-            {% endfor %}
+          {% for server in webservers_facts.results %}
+            acl APP_LAB{{loop.index}} hdr_dom(host) -i website{{loop.index}}.local
+            use_backend LAB_BACKEND{{loop.index}} if APP_LAB{{loop.index}}
+          {% endfor %}
+
+          {% for server in webservers_facts.results %}
+          backend LAB_BACKEND{{loop.index}}
+            server {{server['ansible_facts']['ansible_hostname']}} {{server['ansible_facts']['ansible_eth1']['ipv4']['address']}}:80 
+          {% endfor %}
 
     - name: "Restart HAPROXY"
       ansible.builtin.systemd:
