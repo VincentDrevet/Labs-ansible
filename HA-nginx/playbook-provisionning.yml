@@ -4,17 +4,28 @@
   become: true
   tasks:
     - ansible.builtin.apt:
-        name: nginx
+        name:
+          - python3
+          - python3-pip
         state: latest
       become: true
-    - ansible.builtin.lineinfile:
-        path: /etc/nginx/sites-available/default
-        insertafter: ^\s+listen\s\[::\]:80\sdefault_server;
-        line: "       add_header X-Webserver {{ ansible_hostname }};" 
-    - ansible.builtin.systemd:
-        name: nginx
-        state: restarted
-        enabled: true
+    - name: "copy dummy app to webserver"
+      ansible.builtin.copy:
+        src: "./dummy-app"
+        dest: "/opt"
+        mode: 0645
+      become: true
+    - name: "Install python requirements"
+      ansible.builtin.shell:
+        cmd: pip install -r requirements.txt
+        chdir: "/opt/dummy-app" 
+    - name: "Launch dummy app in background"
+      ansible.builtin.shell:
+        cmd: (python3 main.py > /dev/null 2>&1 &)
+        chdir: "/opt/dummy-app"
+      async: 10
+      poll: 0
+        
 
 - name: "Install HA"
   hosts: ha-proxies
@@ -24,4 +35,22 @@
         name: haproxy
         state: latest
       become: true
+  
+    - name: "Add HAPROXY configuration"
+      ansible.builtin.blockinfile:
+        path: /etc/haproxy/haproxy.cfg
+        block: |
+          frontend FRONT_LAB
+            bind *:80
+            mode http
+            default_backend BACK_LAB
+            option forwardfor
+
+          backend BACK_LAB
+            server web 10.10.0.2:3000
+    - name: "Restart HAPROXY"
+      ansible.builtin.systemd:
+        name: haproxy
+        state: restarted
+        enabled: true
         
