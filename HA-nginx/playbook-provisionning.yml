@@ -41,6 +41,7 @@
         path: /etc/haproxy/haproxy.cfg
         block: |
           frontend LAB_FRONTEND
+            description Frontend website1 et 2
             bind *:80
             mode http
 
@@ -52,9 +53,13 @@
 
           
           backend LAB_BACKEND1
+          description Backend {{ webservers_facts.results[0]['ansible_facts']['ansible_hostname'] }}
           server {{webservers_facts.results[0]['ansible_facts']['ansible_hostname']}} {{webservers_facts.results[0]['ansible_facts']['ansible_eth1']['ipv4']['address']}}:80 
 
           backend LAB_BACKEND2
+          description {% for server in webservers_facts.results %}{% if loop.first != True %}{{server['ansible_facts']['ansible_hostname']}}{% endif %} {% endfor %}
+
+
           {% for server in webservers_facts.results %}
             {% if loop.first != True %}
               server {{server['ansible_facts']['ansible_hostname']}} {{server['ansible_facts']['ansible_eth1']['ipv4']['address']}}:80 
@@ -66,6 +71,8 @@
             stats enable
             stats uri /stats
             stats refresh 2s
+            stats show-desc
+            stats show-legends
             stats auth vincent:P@ssw0rd
     - name: "Restart HAPROXY"
       ansible.builtin.systemd:
