@@ -3,54 +3,73 @@
   hosts: webservers
   become: true
   tasks:
-    - ansible.builtin.apt:
-        name:
-          - python3
-          - python3-pip
+    - name: "Install nginx"
+      ansible.builtin.apt:
+        name: nginx
         state: latest
       become: true
-    - name: "copy dummy app to webserver"
-      ansible.builtin.copy:
-        src: "./dummy-app"
-        dest: "/opt"
-        mode: 0645
-      become: true
-    - name: "Install python requirements"
-      ansible.builtin.shell:
-        cmd: pip install -r requirements.txt
-        chdir: "/opt/dummy-app" 
-    - name: "Launch dummy app in background"
-      ansible.builtin.shell:
-        cmd: (python3 main.py > /dev/null 2>&1 &)
-        chdir: "/opt/dummy-app"
-      async: 10
-      poll: 0
-        
+    - name: "Add custom header"
+      ansible.builtin.lineinfile:
+        path: /etc/nginx/sites-available/default
+        insertafter: ^\s+listen\s\[::\]:80\sdefault_server;
+        line: "       add_header X-Webserver {{ ansible_hostname }};" 
+    - name: "Restart nginx daemon"
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+        enabled: true
 
 - name: "Install HA"
   hosts: ha-proxies
   become: true
   tasks:
-    - ansible.builtin.apt:
+    - name: "Install HAPROXY"
+      ansible.builtin.apt:
         name: haproxy
         state: latest
       become: true
-  
+
+    - name: "Get facts webservers group"
+      ansible.builtin.setup:
+      delegate_to: "{{ item }}"
+      delegate_facts: true
+      loop: "{{groups['webservers']}}"
+      register: webservers_facts
+    
     - name: "Add HAPROXY configuration"
       ansible.builtin.blockinfile:
         path: /etc/haproxy/haproxy.cfg
         block: |
-          frontend FRONT_LAB
+          frontend LAB_FRONTEND
             bind *:80
             mode http
-            default_backend BACK_LAB
-            option forwardfor
 
-          backend BACK_LAB
-            server web 10.10.0.2:3000
+          acl APP_LAB1 hdr_dom(host) -i website1.local
+          use_backend LAB_BACKEND1 if APP_LAB1
+
+          acl APP_LAB2 hdr_dom(host) -i website2.local
+          use_backend LAB_BACKEND2 if APP_LAB2
+
+          
+          backend LAB_BACKEND1
+          server {{webservers_facts.results[0]['ansible_facts']['ansible_hostname']}} {{webservers_facts.results[0]['ansible_facts']['ansible_eth1']['ipv4']['address']}}:80 
+
+          backend LAB_BACKEND2
+          {% for server in webservers_facts.results %}
+            {% if loop.first != True %}
+              server {{server['ansible_facts']['ansible_hostname']}} {{server['ansible_facts']['ansible_eth1']['ipv4']['address']}}:80 
+            {% endif %}
+          {% endfor %}
+
+          listen stats
+            bind *:9000
+            stats enable
+            stats uri /stats
+            stats refresh 2s
+            stats auth vincent:P@ssw0rd
     - name: "Restart HAPROXY"
       ansible.builtin.systemd:
         name: haproxy
         state: restarted
         enabled: true
-        
+            
