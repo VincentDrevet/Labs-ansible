@@ -74,6 +74,7 @@
             stats show-desc
             stats show-legends
             stats auth vincent:P@ssw0rd
+            stats admin if TRUE
     - name: "Restart HAPROXY"
       ansible.builtin.systemd:
         name: haproxy
