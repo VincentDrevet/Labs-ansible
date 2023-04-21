@@ -83,7 +83,9 @@
   tasks:
     - name: "Install HAPROXY"
       ansible.builtin.apt:
-        name: haproxy
+        name:
+          - haproxy
+          - hatop
         state: latest
       become: true
 
