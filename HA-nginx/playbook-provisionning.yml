@@ -81,6 +81,25 @@
   hosts: ha-proxies
   become: true
   tasks:
+    - name: "Generate SSL certificat"
+      ansible.builtin.shell:
+        cmd: openssl req -x509 -subj "/C=FR/ST=Ile de France/L=Paris/O=LAB/OU=IT Department/CN=lab.local" -newkey rsa:2048 -keyout lab.key -out lab.cert -days 365 -nodes && cat lab.key lab.cert > lab.pem
+      delegate_to: localhost
+      run_once: true
+
+    - name: "Ensure /etc/ssl/lab directory exist"
+      ansible.builtin.file:
+        path: /etc/ssl/lab
+        state: directory
+      become: true
+
+    - name: "Copy certificat to servers"
+      ansible.builtin.copy:
+        src: lab.pem
+        dest: /etc/ssl/lab/lab.pem
+        mode: 0644
+      become: true
+        
     - name: "Install HAPROXY"
       ansible.builtin.apt:
         name:
@@ -104,6 +123,8 @@
           frontend LAB_FRONTEND
             description My Frontend
             bind *:80
+            bind *:443 ssl crt /etc/ssl/lab/lab.pem no-sslv3
+            redirect scheme https if !{ ssl_fc }
             mode http
 
           acl is_match path -i /Page1.html
@@ -141,11 +162,11 @@
             stats show-legends
             stats auth vincent:P@ssw0rd
             stats admin if TRUE
-    - name: "Restart HAPROXY"
-      ansible.builtin.systemd:
-        name: haproxy
-        state: restarted
-        enabled: true
+    #- name: "Restart HAPROXY"
+    #  ansible.builtin.systemd:
+    #    name: haproxy
+    #    state: restarted
+    #    enabled: true
 
     - name: "Create keepalived configuration file"
       ansible.builtin.file:
