@@ -86,6 +86,7 @@
         name:
           - haproxy
           - hatop
+          - keepalived
         state: latest
       become: true
 
@@ -142,4 +143,48 @@
         name: haproxy
         state: restarted
         enabled: true
+
+    - name: "Create keepalived configuration file"
+      ansible.builtin.file:
+        path: "/etc/keepalived/keepalived.conf"
+        state: touch
+        mode: 0644
+      become: true
+    - name: "Setup keepalived"
+      ansible.builtin.blockinfile:
+        path: "/etc/keepalived/keepalived.conf"
+        block: |
+          vrrp_script reload_haproxy {
+            script "killall -0 haproxy"
+            interval 1
+          }
+
+          vrrp_instance VI_1 {
+            virtual_router_id 100
+            state {{ keepalived_role }}
+            priority 100
+
+            advert_int 1
+            lvs_sync_daemon_interface eth1
+            interface eth1
+
+            authentication {
+              auth_type PASS
+              auth_pass {{ keepalived_pass }}
+            }
+
+            virtual_ipaddress {
+              10.10.0.200/32 brd 10.10.0.255 scope global
+            }
+
+            track_script {
+              reload_haproxy
+            }
+          }
+    - name: "Reload keepalived daemon"
+      ansible.builtin.systemd:
+        name: keepalived
+        state: restarted
+        enabled: true
+        
             
