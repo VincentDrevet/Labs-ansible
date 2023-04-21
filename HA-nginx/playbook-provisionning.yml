@@ -12,12 +12,70 @@
       ansible.builtin.lineinfile:
         path: /etc/nginx/sites-available/default
         insertafter: ^\s+listen\s\[::\]:80\sdefault_server;
-        line: "       add_header X-Webserver {{ ansible_hostname }};" 
+        line: "       add_header X-Webserver {{ ansible_hostname }};"
     - name: "Restart nginx daemon"
       ansible.builtin.systemd:
         name: nginx
         state: restarted
         enabled: true
+
+- name: "Create HTML dummy page"
+  hosts: web-1
+  become: true
+  tasks:
+    - name: "Create Page1.html"
+      ansible.builtin.file:
+        path: /var/www/html/Page1.html
+        state: touch
+        owner: www-data
+        group: www-data
+        mode: 0755
+      become: true
+    - name: "Add Content to html"
+      ansible.builtin.blockinfile:
+        marker: "<!-- {mark} ANSIBLE MANAGED BLOCK -->"
+        path: /var/www/html/Page1.html
+        block: |
+          <h1>Page 1</h1>
+        owner: www-data
+        group: www-data
+        mode: 0644
+      become: true
+    - name: "Create Dummy Folder"
+      ansible.builtin.file:
+        path: /var/www/html/dummy
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: 0755
+      become: true
+    - name: "Create Dummy html"
+      ansible.builtin.file:
+        path: "/var/www/html/dummy/{{item}}"
+        state: touch
+        owner: www-data
+        group: www-data
+        mode: 0755
+      become: true
+      loop: 
+        - "Dummy1.html"
+        - "Dummy2.html"
+        - "Dummy3.html"
+    - name: "Add dummy content"
+      ansible.builtin.blockinfile:
+        marker: "<!-- {mark} ANSIBLE MANAGED BLOCK -->"
+        path: "/var/www/html/dummy/{{item}}"
+        block: |
+          <h1>{{ item }}</h1>
+        owner: www-data
+        group: www-data
+        mode: 0644
+      become: true
+      loop: 
+        - "Dummy1.html"
+        - "Dummy2.html"
+        - "Dummy3.html"
+        
 
 - name: "Install HA"
   hosts: ha-proxies
@@ -41,15 +99,17 @@
         path: /etc/haproxy/haproxy.cfg
         block: |
           frontend LAB_FRONTEND
-            description Frontend website1 et 2
+            description My Frontend
             bind *:80
             mode http
 
-          acl APP_LAB1 hdr_dom(host) -i website1.local
-          use_backend LAB_BACKEND1 if APP_LAB1
+          acl is_match path -i /Page1.html
+          use_backend LAB_BACKEND1 if is_match
 
-          acl APP_LAB2 hdr_dom(host) -i website2.local
-          use_backend LAB_BACKEND2 if APP_LAB2
+          acl is_match path_beg -i /dummy
+          use_backend LAB_BACKEND1 if is_match
+
+          default_backend LAB_BACKEND2
 
           
           backend LAB_BACKEND1
